@@ -274,6 +274,7 @@ import { syncManageChatsBackupsBrowser } from './scripts/chat-backups.js';
 import { canJumpToSwipeForMessage, canOpenSwipePickerForMessage, initSwipePicker } from './scripts/swipe-picker.js';
 import { MessageFormatter } from './scripts/message-formatter.js';
 import { initGenerationLocks } from './scripts/generation-locks.js';
+//import { ValidationError } from 'webpack';
 
 export { sanitizeMessageHtml } from './scripts/chats.js';
 
@@ -5401,6 +5402,21 @@ export async function prepareCurrentChatSavePayload({ header = null, endId = und
                 messageUuid: trimmedChat[index]?.[AIKOBOTS_MESSAGE_UUID_KEY] ?? null,
                 reason: validation.reason,
             });
+
+            console.log("___invalidity_report___");
+            var invalid = [];
+            for (let index = 0; index < trimmedChat.length; index++) {
+                const messageId = firstMessageId + index;
+                const validation = validateMessageSwipeState(trimmedChat[index], {
+                    allowMesMismatch: messageId === 0,
+                    allowMetadataMismatch: messageId === 0,
+                });
+                if(!validation.ok){
+                    console.log("  invalidAsWell %d",index);
+                    invalid.push(index);
+                }
+            }
+            console.log("all invalid items: %s",invalid);
             return {
                 ok: false,
                 reason: validation.reason,

@@ -4190,6 +4190,8 @@ router.post('/sync-user-persona', validateAvatarUrlMiddleware, async function (r
 });
 
 router.post('/save', validateAvatarUrlMiddleware, async function (request, response) {
+    var filePath = "";
+    let debuggingSaveSteps = true;
     try {
         const directoryName = normalizeCharacterChatDirectoryName(request.body.avatar_url);
         if (!hasValidChatPayload(request.body.chat)) {
@@ -4198,14 +4200,17 @@ router.post('/save', validateAvatarUrlMiddleware, async function (request, respo
 
         const chatData = request.body.chat;
         const directoryPath = resolveCharacterChatDirectory(request.user.directories.chats, request.body.avatar_url);
-        const filePath = resolveCharacterChatFilePath(request.user.directories.chats, request.body.avatar_url, request.body.file_name);
+        filePath = resolveCharacterChatFilePath(request.user.directories.chats, request.body.avatar_url, request.body.file_name);
 
         if (!fs.existsSync(directoryPath)) {
             fs.mkdirSync(directoryPath, { recursive: true });
         }
-
+  
+        if (debuggingSaveSteps) {console.log("saving %s around 4207",filePath);}
         return await withChatSaveLock(filePath, async () => {
+            if (debuggingSaveSteps) {console.log("saving %s around 4209",filePath);}
             if (checkIntegrity && !request.body.force) {
+                if (debuggingSaveSteps) {console.log("  check integ + no force: saving %s around 4211",filePath);}
                 const integritySlug = chatData?.[0]?.chat_metadata?.integrity;
                 const isIntact = await checkChatIntegrity(filePath, integritySlug);
                 if (!isIntact) {
@@ -4225,35 +4230,48 @@ router.post('/save', validateAvatarUrlMiddleware, async function (request, respo
                 : { currentRevision: 0, nextRevision: 1 };
 
             if (existingSqliteChat && existingSegments?.header) {
+                if (debuggingSaveSteps) {console.log("  repair needed: saving %s around 4231",filePath);}
                 await throwIfSqliteChatFileIdentityRepairNeeded(sqlitePath);
             }
 
             if (request.body.save_mode === 'tail') {
+                if (debuggingSaveSteps) {console.log("  invalidSaveModeTail: saving %s around 4236",filePath);}
                 return response.status(400).send({ error: 'invalid_save_mode' });
             } else if (request.body.save_mode === 'loaded_range') {
+                if (debuggingSaveSteps) {console.log("  loadedRangeSaveMode: saving %s around 4239",filePath);}
                 if (existingSqliteChat) {
+                    if (debuggingSaveSteps) {console.log("  existingSQLIteChat: saving %s around 4241",filePath);}
                     await assertChatSaveMutationAllowed(request);
                     if (isForcePushAuthorityRequest(request.body)) {
+                        if (debuggingSaveSteps) {console.log("  isForcePushAuthReq: saving %s around 4244",filePath);}
                         await backupPreForcePushServerChat(request.user, filePath, directoryName);
                     }
+                    let chatRange = chatData.slice(1);
+                    if (debuggingSaveSteps) {console.log("  aboutToupdateSqliteLoadedMessageRange %s: saving %s around 4248",chatRange,filePath);}
                     const payload = await updateSqliteLoadedMessageRange({
                         filePath,
                         requestBody: request.body,
                         incomingHeader: chatData[0],
-                        rangeMessages: chatData.slice(1),
+                        rangeMessages: chatRange,
                         saveSessionId: getRequestSaveSessionId(request.body),
                         regenerateIdentities: request.body.regenerate_identities === true,
                     });
                     if (payload.fullJsonl) {
+                        if (debuggingSaveSteps) {console.log("  payloadfullsjonl so get backup function: saving %s around 4258",filePath);}
                         getBackupFunction(request.user.profile.handle)(request.user.directories.backups, directoryName, payload.fullJsonl);
                     }
 
                     const { fullJsonl, ...responsePayload } = payload;
+                    if (debuggingSaveSteps) {console.log("  sending response now: saving %s around 4263",filePath);}
+                        
                     return response.send(responsePayload);
                 }
 
                 const existingChat = await getLogicalChatData(filePath);
+                if (debuggingSaveSteps) {console.log("  extChatGet: saving %s around 4269",filePath);}
+                    
                 if (existingChat.length === 0) {
+                    if (debuggingSaveSteps) {console.log("  chatleng0: saving %s around 4272",filePath);}
                     return response.status(400).send({ error: 'invalid_loaded_range' });
                 }
 
@@ -4262,15 +4280,21 @@ router.post('/save', validateAvatarUrlMiddleware, async function (request, respo
                     ? applyForcePushLoadedMessageRange(existingChat, request.body.loaded_range_start, chatData.slice(1), request.body.loaded_range_end, request.body)
                     : applyLoadedMessageRange(existingChat, request.body.loaded_range_start, chatData.slice(1), request.body.loaded_range_end);
                 if (!isForcePush) {
+                    if (debuggingSaveSteps) {console.log("  not forced: saving %s around 4281",filePath);}
                     const messageCountValidation = validateSubmittedMessageCount(request.body, existingChat.length - 1);
+
                     if (!messageCountValidation.ok) {
+
+                        if (debuggingSaveSteps) {console.log("  !messageCountValidation.ok: saving %s around 4286",filePath);}
                         return response.status(400).send({ error: messageCountValidation.error });
                     }
                 }
                 if (!loadedRangeResult.ok) {
+                    if (debuggingSaveSteps) {console.log("  !loadedRangeResult.ok: saving %s around 4291",filePath);}
                     return response.status(400).send({ error: loadedRangeResult.error });
                 }
                 if (isForcePush) {
+                    if (debuggingSaveSteps) {console.log("  isForcePush: saving %s around 4295",filePath);}
                     await backupPreForcePushServerChat(request.user, filePath, directoryName);
                 }
 
@@ -4279,18 +4303,23 @@ router.post('/save', validateAvatarUrlMiddleware, async function (request, respo
                     ...loadedRangeResult.chatData.slice(1),
                 ];
             } else if (request.body.save_mode !== undefined) {
+                if (debuggingSaveSteps) {console.log("  save_mode undefined: saving %s around 4304",filePath);}
                 return response.status(400).send({ error: 'invalid_save_mode' });
             } else if (request.body.full_chat !== true) {
+                if (debuggingSaveSteps) {console.log("  request.body.full_chat !== true: saving %s around XXXX",filePath);}
                 return response.status(400).send({ error: 'full_save_requires_hydration' });
             } else if (existingSegments?.header || Object.prototype.hasOwnProperty.call(request.body || {}, 'base_revision')) {
                 const fullChatValidation = validateSubmittedFullChatPayload(request.body, chatData.slice(1));
                 if (!fullChatValidation.ok) {
+                     if (debuggingSaveSteps) {console.log("  !fullChatValidation.ok: saving %s around XXXX",filePath);}
                     return response.status(400).send({ error: fullChatValidation.error });
                 }
             }
 
             if (existingSqliteChat && existingSegments?.header) {
-                const validation = validateExistingSqliteFullReplacementRequest({
+                 if (debuggingSaveSteps) {console.log("  existingSqliteChat && existingSegments?.header: saving %s around XXXX",filePath);}
+                    
+                 const validation = validateExistingSqliteFullReplacementRequest({
                     routeName: '/api/chats/save',
                     operationType: 'ordinary_full_replace',
                     filePath: sqlitePath,
@@ -4307,6 +4336,8 @@ router.post('/save', validateAvatarUrlMiddleware, async function (request, respo
             const saveIsNoop = existingChatData.length > 0 && isLogicalChatSaveNoop(existingChatData, logicalChatData);
 
             if (saveIsNoop) {
+                if (debuggingSaveSteps) {console.log("  saveIsNoop==true: saving %s around 4337",filePath);}
+                 
                 const layout = getSegmentLayout(existingSegments);
 
                 return response.send({
@@ -4323,6 +4354,7 @@ router.post('/save', validateAvatarUrlMiddleware, async function (request, respo
 
             const header = setChatRevision(logicalChatData[0], revisionCheck.nextRevision, getRequestSaveSessionId(request.body));
             const messages = logicalChatData.slice(1);
+            if (debuggingSaveSteps) {console.log("  assertChatSaveMutationAllowed: saving %s around 4355",filePath);}
             await assertChatSaveMutationAllowed(request);
 
             const writeOptions = {
@@ -4331,9 +4363,11 @@ router.post('/save', validateAvatarUrlMiddleware, async function (request, respo
 
             const writeResult = await writeLogicalChat(filePath, header, messages, writeOptions);
             if (writeResult.fullJsonl) {
+                if (debuggingSaveSteps) {console.log("  writeResult.fullJsonl: saving %s around 4364",filePath);}
                 getBackupFunction(request.user.profile.handle)(request.user.directories.backups, directoryName, writeResult.fullJsonl);
             }
 
+            if (debuggingSaveSteps) {console.log("  about to response.send: saving %s around 4368",filePath);}
             return response.send({
                 result: 'ok',
                 chat_revision: revisionCheck.nextRevision,
@@ -4347,18 +4381,23 @@ router.post('/save', validateAvatarUrlMiddleware, async function (request, respo
         });
     } catch (error) {
         if (isActiveSessionError(error)) {
+            if (debuggingSaveSteps) {console.log("  isActiveSessionError: saving %s around 4383",filePath);}
             return sendActiveSessionRequired(response);
         }
         if (isUnsupportedSplitTailChatError(error)) {
+            if (debuggingSaveSteps) {console.log("  unsupsplittailchaterrror: saving %s around 4383",filePath);}
             return sendUnsupportedSplitTailChatError(response, error);
         }
         if (isChatPathValidationError(error)) {
+            if (debuggingSaveSteps) {console.log("  chatvaliderror: saving %s around 4383",filePath);}
             return sendChatPathValidationError(response, error);
         }
         if (error instanceof ChatMutationError) {
+            if (debuggingSaveSteps) {console.log("  chatmuterror: saving %s around 4383",filePath);}
             return response.status(error.status || 400).send({ error: error.error, message: error.message, ...error.details });
         }
         console.error(error);
+        if (debuggingSaveSteps) {console.log("  about to send 500: saving %s around 4383",filePath);}
         return response.status(500).send({ error: 'save_failed' });
     }
 });

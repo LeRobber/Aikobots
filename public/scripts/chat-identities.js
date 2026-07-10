@@ -41,8 +41,10 @@ function normalizeComparableSwipeExtra(extra) {
     if (comparable.bias === null) {
         delete comparable.bias;
     }
+    delete comparable.branches;
     delete comparable.worldInfoSummary;
     delete comparable.worldInfoReport;
+    
     return comparable;
 }
 
@@ -76,8 +78,11 @@ function areJsonValuesEqual(left, right) {
  * @returns {{ok: boolean, reason: string, swipeId: number|null, selectedSwipeUuid: string|null}}
  */
 export function validateMessageSwipeState(message, { allowMesMismatch = false, allowMetadataMismatch = false } = {}) {
+
+    let debug_validateMessageSwipeState = true;
     const result = { ok: true, reason: '', swipeId: null, selectedSwipeUuid: null };
     if (!isObject(message)) {
+        if (debug_validateMessageSwipeState) {console.log("validateMessageSwipeState: message not object");}
         return { ...result, ok: false, reason: 'invalid_message' };
     }
 
@@ -94,23 +99,30 @@ export function validateMessageSwipeState(message, { allowMesMismatch = false, a
         return { ...result, ok: false, reason: 'swipe_length_mismatch' };
     }
 
-    const swipeId = Number(message.swipe_id);
+    const swipeId = Number(message.swipe_id) ?? Number(-1);
     if (!Number.isInteger(swipeId) || swipeId < 0 || swipeId >= message.swipes.length) {
+        if (debug_validateMessageSwipeState) {console.log("validateMessageSwipeState: %d",swipeId);}
         return { ...result, ok: false, reason: 'swipe_id_out_of_bounds', swipeId };
     }
     result.swipeId = swipeId;
 
     if (!allowMesMismatch && message.mes !== message.swipes[swipeId]) {
+        if (debug_validateMessageSwipeState) {console.log("validateMessageSwipeState: %s vs %s",message.mes,message.swipes[swipeId]);}
         return { ...result, ok: false, reason: 'active_swipe_text_mismatch' };
     }
 
     const seenSwipeUuids = new Set();
     for (let index = 0; index < message.swipe_info.length; index++) {
         const swipeUuid = message.swipe_info[index]?.[AIKOBOTS_SWIPE_UUID_KEY];
+        
         if (!isValidAikobotsUuid(swipeUuid)) {
+            if (debug_validateMessageSwipeState) {console.log("invalid_swipe_uuid validateMessageSwipeState: %d @ %s",index,swipeUuid);}
+        
             return { ...result, ok: false, reason: 'invalid_swipe_uuid' };
         }
         if (seenSwipeUuids.has(swipeUuid)) {
+            if (debug_validateMessageSwipeState) {console.log("duplicate_swipe_uuid validateMessageSwipeState: %d @ %s",index,swipeUuid);}
+        
             return { ...result, ok: false, reason: 'duplicate_swipe_uuid' };
         }
         seenSwipeUuids.add(swipeUuid);
@@ -119,17 +131,23 @@ export function validateMessageSwipeState(message, { allowMesMismatch = false, a
     const selectedSwipeInfo = message.swipe_info[swipeId];
     result.selectedSwipeUuid = selectedSwipeInfo[AIKOBOTS_SWIPE_UUID_KEY];
     if (allowMetadataMismatch) {
+        if (debug_validateMessageSwipeState) {console.log("allowMetadataMismatch validateMessageSwipeState");}
+        
         return result;
     }
     for (const key of ['send_date', 'gen_started', 'gen_finished']) {
         if (!Object.is(message[key], selectedSwipeInfo[key])) {
+             if (debug_validateMessageSwipeState) {console.log("active_swipe_mismatch validateMessageSwipeState %s msg_%s, ssi_%s",key,message[key], selectedSwipeInfo[key] );}
             return { ...result, ok: false, reason: `active_swipe_${key}_mismatch` };
         }
     }
 
     const topLevelExtra = normalizeComparableSwipeExtra(message.extra);
     const selectedSwipeExtra = normalizeComparableSwipeExtra(selectedSwipeInfo.extra);
+    
     if (!areJsonValuesEqual(topLevelExtra, selectedSwipeExtra)) {
+        if (debug_validateMessageSwipeState) {console.log("validateMessageSwipeState %s (%s) vs %s (%s) and [[%s]]",JSON.stringify(topLevelExtra), JSON.stringify(message.extra),JSON.stringify(selectedSwipeExtra),JSON.stringify(selectedSwipeInfo.extra),JSON.stringify(message.swipe_info));}
+           
         return { ...result, ok: false, reason: 'active_swipe_extra_mismatch' };
     }
 

@@ -15,6 +15,7 @@ import { decodeTextTokens, getTokenizerBestMatch } from './tokenizers.js';
 import { power_user } from './power-user.js';
 import { callGenericPopup, POPUP_TYPE } from './popup.js';
 import { t } from './i18n.js';
+//import { magnitude } from 'sillytavern-transformers';
 
 const TINTS = 4;
 const MAX_MESSAGE_LOGPROBS = 100;
@@ -426,6 +427,7 @@ function createSwipe(messageId, prompt) {
 
     msg.swipes = msg.swipes || [];
     msg.swipe_info = msg.swipe_info || [];
+    
 
     // Add our new swipe, then make sure the active swipe is the one just before
     // it. The call to `swipe_right` in addGeneration() will switch to it immediately.
